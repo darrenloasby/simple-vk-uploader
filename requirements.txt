@@ -1,0 +1,4 @@
+vk-api==11.9.9
+requests==2.31.0
+tqdm==4.66.1
+psutil==5.9.6
