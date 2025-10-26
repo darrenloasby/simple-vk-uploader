@@ -22,6 +22,16 @@ jobs:
       contents: read
       packages: write
 
+    strategy:
+      matrix:
+        variant:
+          - name: "base"
+            dockerfile: "Dockerfile"
+            suffix: ""
+          - name: "standalone"
+            dockerfile: "Dockerfile.standalone"
+            suffix: "-standalone"
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -40,30 +50,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels)
+      - name: Extract metadata (tags, labels) for ${{ matrix.variant.name }}
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch,suffix=${{ matrix.variant.suffix }}
+            type=ref,event=pr,suffix=${{ matrix.variant.suffix }}
+            type=semver,pattern={{version}},suffix=${{ matrix.variant.suffix }}
+            type=semver,pattern={{major}}.{{minor}},suffix=${{ matrix.variant.suffix }}
+            type=semver,pattern={{major}},suffix=${{ matrix.variant.suffix }}
+            type=sha,prefix={{branch}}-,suffix=${{ matrix.variant.suffix }}
+            type=raw,value=latest${{ matrix.variant.suffix }},enable={{is_default_branch}}
 
-      - name: Build and push Docker image
+      - name: Build and push ${{ matrix.variant.name }} Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: ${{ matrix.variant.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.variant.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant.name }}
 
-      - name: Image digest
+      - name: Image digest for ${{ matrix.variant.name }}
         run: echo ${{ steps.meta.outputs.tags }}

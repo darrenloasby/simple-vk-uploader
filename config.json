@@ -1,0 +1,48 @@
+{
+  "name": "VK Video Uploader",
+  "version": "1.0.0",
+  "slug": "vk-uploader",
+  "description": "Automated VK video uploader with WireGuard VPN rotation and concurrent uploads",
+  "arch": ["amd64", "aarch64", "armv7"],
+  "url": "https://github.com/darrenloasby/simple-vk-uploader",
+  "startup": "application",
+  "boot": "auto",
+  "init": false,
+  "privileged": true,
+  "host_network": false,
+  "apparmor": false,
+  "map": ["share:rw", "media:rw"],
+  "options": {
+    "vk_token": "",
+    "videos_path": "/media/videos",
+    "poll_interval": 300,
+    "max_concurrent": 5,
+    "upload_chunk_size_mb": 10,
+    "parallel_workers": 3,
+    "log_level": "INFO",
+    "timezone": "UTC",
+    "wireguard_configs": []
+  },
+  "schema": {
+    "vk_token": "password",
+    "videos_path": "str",
+    "poll_interval": "int(60,3600)",
+    "max_concurrent": "int(1,10)",
+    "upload_chunk_size_mb": "int(5,50)",
+    "parallel_workers": "int(1,10)",
+    "log_level": "list(DEBUG|INFO|WARNING|ERROR)?",
+    "timezone": "str?",
+    "wireguard_configs": [
+      {
+        "name": "str",
+        "interface_private_key": "password",
+        "interface_address": "str",
+        "interface_dns": "str?",
+        "peer_public_key": "str",
+        "peer_endpoint": "str",
+        "peer_allowed_ips": "str?"
+      }
+    ]
+  },
+  "image": "ghcr.io/{arch}-vk-uploader"
+}

@@ -1,21 +1,44 @@
 # VK Video Uploader
 
-Automated VK video uploader with WireGuard VPN rotation, folder-based playlists, and macOS notifications.
+Automated VK video uploader with WireGuard VPN rotation, folder-based playlists, and concurrent uploads.
 
 ## Features
 
-- **Automatic Processing**: Runs every 5 minutes via LaunchAgent (macOS) or systemd (Linux)
+- **Automatic Processing**: Runs every 5 minutes via LaunchAgent (macOS), systemd (Linux), or continuous Docker polling
 - **Smart Playlists**: Creates VK albums based on folder structure
 - **WireGuard Rotation**: Cycles through VPN configs for each upload
 - **Concurrent Uploads**: 5 videos upload simultaneously with different VPN connections
-- **Notifications**: Upload status alerts (macOS only)
-- **File Tagging**: Uploaded files tagged BLUE, completed folders tagged PURPLE (macOS)
+- **Standalone Docker**: All-in-one container with continuous polling (no host dependencies)
+- **Notifications**: Upload status alerts (macOS host mode only)
+- **File Tagging**: Uploaded files tagged BLUE, completed folders tagged PURPLE (macOS host mode only)
 - **Parallel Uploads**: Efficient chunked uploads for large files
-- **Cross-Platform**: Full support for macOS and Linux (Debian/Ubuntu)
+- **Cross-Platform**: Full support for macOS, Linux, and Docker
 
 ## Quick Start
 
-### macOS
+### Docker (Standalone - Recommended)
+
+**Perfect for:** Any platform, servers, NAS devices, always-on setups
+
+```bash
+# 1. Create .env file
+cp .env.example .env
+# Edit .env and add your VK_TOKEN
+
+# 2. (Optional) Encode WireGuard configs
+./scripts/wg-config-converter.sh encode
+cat .env.wg-configs >> .env
+
+# 3. Run with docker-compose
+docker-compose up -d
+
+# 4. View logs
+docker-compose logs -f
+```
+
+The standalone container continuously polls your videos directory and uploads up to 5 videos concurrently with automatic WireGuard rotation.
+
+### macOS (Host Integration)
 
 1. **Setup environment**:
    ```bash
@@ -119,7 +142,54 @@ videos/
 
 ## Management
 
-### Common (All Platforms)
+### Docker Standalone
+
+**View logs**:
+```bash
+docker-compose logs -f
+# Or specific lines:
+docker-compose logs --tail=100 -f
+```
+
+**Stop/start container**:
+```bash
+# Stop
+docker-compose stop
+
+# Start
+docker-compose start
+
+# Restart
+docker-compose restart
+
+# Check status
+docker-compose ps
+```
+
+**Update to latest image**:
+```bash
+docker-compose pull
+docker-compose up -d
+```
+
+**Access container shell**:
+```bash
+docker-compose exec vk-uploader bash
+```
+
+**View WireGuard status inside container**:
+```bash
+docker-compose exec vk-uploader sudo wg show
+```
+
+**Remove everything**:
+```bash
+docker-compose down
+# Or with volumes:
+docker-compose down -v
+```
+
+### Host Integration (macOS/Linux)
 
 **View logs**:
 ```bash
@@ -242,14 +312,32 @@ brew install terminal-notifier
 
 Pre-built multi-platform images are available via GitHub Container Registry:
 
+### Standalone (Recommended)
+
 ```bash
-# Pull latest image (supports both Intel and Apple Silicon Macs, plus Linux AMD64/ARM64)
-docker pull ghcr.io/${{ github.repository }}:latest
+# Pull latest standalone image
+docker pull ghcr.io/darrenloasby/vk-uploader-standalone:latest
+
+# Or use in docker-compose.yml (already configured)
+docker-compose pull
 ```
 
-Images are automatically built for:
+**Use this for:** Self-contained deployment, continuous polling, no host scripts needed
+
+### Base Image
+
+```bash
+# Pull latest base image (requires host scripts)
+docker pull ghcr.io/darrenloasby/vk-uploader:latest
+```
+
+**Use this for:** Host-integrated mode with LaunchAgent (macOS) or systemd (Linux)
+
+### Supported Platforms
+
+Both images are automatically built for:
 - `linux/amd64` (Intel/AMD - best WireGuard performance on Linux)
-- `linux/arm64` (Apple Silicon, ARM servers)
+- `linux/arm64` (Apple Silicon, ARM servers, Raspberry Pi)
 
 **Performance Note**: On Linux, WireGuard runs in kernel mode (~10x faster). On macOS, it runs in userspace mode (slower but still functional).
 
