@@ -44,5 +44,5 @@
       }
     ]
   },
-  "image": "ghcr.io/darrenloasby/simple-vk-uploader-standalone"
+  "image": "ghcr.io/darrenloasby/simple-vk-uploader"
 }
