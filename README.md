@@ -180,6 +180,8 @@ tail -f logs/system-monitor.log
 ## Requirements
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
 - macOS
 - [OrbStack](https://orbstack.dev/) (or Docker Desktop)
 - [terminal-notifier](https://github.com/julienXX/terminal-notifier) (for rich notifications)
@@ -194,15 +196,37 @@ Install dependencies:
 
 Install terminal-notifier (macOS):
 >>>>>>> Stashed changes
+=======
+- macOS or Linux
+- Docker ([OrbStack](https://orbstack.dev/) recommended for macOS, faster than Docker Desktop)
+- [terminal-notifier](https://github.com/julienXX/terminal-notifier) (for rich notifications on macOS)
+- WireGuard configs (optional, can be disabled)
+
+Install terminal-notifier (macOS):
+>>>>>>> Stashed changes
+=======
+- macOS or Linux
+- Docker ([OrbStack](https://orbstack.dev/) recommended for macOS, faster than Docker Desktop)
+- [terminal-notifier](https://github.com/julienXX/terminal-notifier) (for rich notifications on macOS)
+- WireGuard configs (optional, can be disabled)
+
+Install terminal-notifier (macOS):
+>>>>>>> Stashed changes
 ```bash
 brew install orbstack terminal-notifier
 ```
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
 > **Note**: OrbStack is recommended for better performance and lower resource usage on macOS. Docker Desktop also works but is slower.
 >
 > **Switching from Docker Desktop to OrbStack**: Just install OrbStack and quit Docker Desktop. OrbStack automatically takes over the `docker` command. No script changes needed!
 =======
+=======
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
 ## Docker Images
 
 Pre-built multi-platform images are available via GitHub Container Registry:
@@ -217,6 +241,12 @@ Images are automatically built for:
 - `linux/arm64` (Apple Silicon, ARM servers)
 
 **Performance Note**: On Linux, WireGuard runs in kernel mode (~10x faster). On macOS, it runs in userspace mode (slower but still functional).
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 
 ## Troubleshooting
@@ -234,10 +264,16 @@ Images are automatically built for:
 - View stderr: `cat logs/*-stderr.log`
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
 **Using Docker Desktop instead of OrbStack?**
 - It works fine, just slower
 - Make sure Docker Desktop is running before uploads
 =======
+=======
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
 **Docker options?**
 - **OrbStack** (recommended): Faster, lighter, native macOS performance
 - **Docker Desktop**: Works fine, just slower and heavier
@@ -272,6 +308,12 @@ GitHub Actions automatically builds multi-platform Docker images on:
 - **Pull requests**: Builds without pushing (validation only)
 
 Images are cached using GitHub Actions cache for faster builds.
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 
 ## License
