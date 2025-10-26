@@ -27,9 +27,11 @@ jobs:
         variant:
           - name: "base"
             dockerfile: "Dockerfile"
+            context: "."
             suffix: ""
           - name: "standalone"
-            dockerfile: "Dockerfile.standalone"
+            dockerfile: "Dockerfile"
+            context: "vk-uploader"
             suffix: "-standalone"
 
     steps:
@@ -67,8 +69,8 @@ jobs:
       - name: Build and push ${{ matrix.variant.name }} Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ${{ matrix.variant.dockerfile }}
+          context: ${{ matrix.variant.context }}
+          file: ${{ matrix.variant.context }}/${{ matrix.variant.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
