@@ -1,11 +1,15 @@
 # Directories
 logs/
-wireguard/
 __pycache__/
 .vscode/
 
+# WireGuard configs (sensitive - use env variables for portability)
+wireguard/*.conf
+wireguard/**/*.conf
+
 # Environment and config
 .env
+.env.wg-configs
 
 # macOS
 .DS_Store

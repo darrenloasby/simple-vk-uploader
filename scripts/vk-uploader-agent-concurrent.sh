@@ -59,6 +59,9 @@ notify() {
 # Ensure directories exist
 mkdir -p "$LOGS_DIR"
 
+# Set up WireGuard configs from environment variables (if defined)
+"$SCRIPT_DIR/setup-wireguard-configs.sh" 2>&1 | tee -a "$LOGS_DIR/agent.log" || true
+
 # Set up log files
 AGENT_LOG="$LOGS_DIR/agent.log"
 UPLOADER_LOG="$LOGS_DIR/uploader.log"

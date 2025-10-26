@@ -55,6 +55,55 @@ LOG_LEVEL=INFO
 SKIP_WIREGUARD=false                 # Set to true to disable VPN
 ```
 
+### WireGuard Configuration (Portable)
+
+WireGuard configs contain sensitive keys and should NOT be committed to git. There are two ways to configure them:
+
+#### Option 1: Local .conf files (Simple)
+
+Place your `.conf` files directly in the `wireguard/` directory:
+```bash
+wireguard/
+├── privado.syd-012.conf
+├── privado.sin-005.conf
+├── privado.akl-012.conf
+├── privado.lax-016.conf
+└── privado.sfo-009.conf
+```
+
+These files are automatically ignored by git.
+
+#### Option 2: Environment Variables (Portable)
+
+For portability across machines, encode configs as base64 and store in `.env`:
+
+```bash
+# 1. Encode all .conf files to base64
+./scripts/wg-config-converter.sh encode
+
+# 2. Append to your .env
+cat .env.wg-configs >> .env
+
+# 3. Clean up (optional)
+rm .env.wg-configs
+```
+
+To decode back to `.conf` files on a new machine:
+
+```bash
+# Just run decode - it reads from .env automatically
+./scripts/wg-config-converter.sh decode
+```
+
+The converter script handles all the base64 encoding/decoding automatically.
+
+**Benefits of Option 2:**
+- Portable across machines (just copy `.env`)
+- Works in CI/CD pipelines
+- Bidirectional conversion with one command
+- No manual base64 encoding needed
+- Still excluded from git (via `.env` in `.gitignore`)
+
 ## Folder Structure
 
 Videos are organized into VK playlists based on folder names:
@@ -179,78 +228,16 @@ tail -f logs/system-monitor.log
 
 ## Requirements
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-- macOS
-- [OrbStack](https://orbstack.dev/) (or Docker Desktop)
-- [terminal-notifier](https://github.com/julienXX/terminal-notifier) (for rich notifications)
-- WireGuard configs (optional, can be disabled)
-
-Install dependencies:
-=======
 - macOS or Linux
 - Docker ([OrbStack](https://orbstack.dev/) recommended for macOS, faster than Docker Desktop)
 - [terminal-notifier](https://github.com/julienXX/terminal-notifier) (for rich notifications on macOS)
 - WireGuard configs (optional, can be disabled)
 
 Install terminal-notifier (macOS):
->>>>>>> Stashed changes
-=======
-- macOS or Linux
-- Docker ([OrbStack](https://orbstack.dev/) recommended for macOS, faster than Docker Desktop)
-- [terminal-notifier](https://github.com/julienXX/terminal-notifier) (for rich notifications on macOS)
-- WireGuard configs (optional, can be disabled)
-
-Install terminal-notifier (macOS):
->>>>>>> Stashed changes
-=======
-- macOS or Linux
-- Docker ([OrbStack](https://orbstack.dev/) recommended for macOS, faster than Docker Desktop)
-- [terminal-notifier](https://github.com/julienXX/terminal-notifier) (for rich notifications on macOS)
-- WireGuard configs (optional, can be disabled)
-
-Install terminal-notifier (macOS):
->>>>>>> Stashed changes
-=======
-- macOS or Linux
-- Docker ([OrbStack](https://orbstack.dev/) recommended for macOS, faster than Docker Desktop)
-- [terminal-notifier](https://github.com/julienXX/terminal-notifier) (for rich notifications on macOS)
-- WireGuard configs (optional, can be disabled)
-
-Install terminal-notifier (macOS):
->>>>>>> Stashed changes
-=======
-- macOS or Linux
-- Docker ([OrbStack](https://orbstack.dev/) recommended for macOS, faster than Docker Desktop)
-- [terminal-notifier](https://github.com/julienXX/terminal-notifier) (for rich notifications on macOS)
-- WireGuard configs (optional, can be disabled)
-
-Install terminal-notifier (macOS):
->>>>>>> Stashed changes
 ```bash
-brew install orbstack terminal-notifier
+brew install terminal-notifier
 ```
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-> **Note**: OrbStack is recommended for better performance and lower resource usage on macOS. Docker Desktop also works but is slower.
->
-> **Switching from Docker Desktop to OrbStack**: Just install OrbStack and quit Docker Desktop. OrbStack automatically takes over the `docker` command. No script changes needed!
-=======
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 ## Docker Images
 
 Pre-built multi-platform images are available via GitHub Container Registry:
@@ -265,19 +252,6 @@ Images are automatically built for:
 - `linux/arm64` (Apple Silicon, ARM servers)
 
 **Performance Note**: On Linux, WireGuard runs in kernel mode (~10x faster). On macOS, it runs in userspace mode (slower but still functional).
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 
 ## Troubleshooting
 
@@ -287,29 +261,11 @@ Images are automatically built for:
 **Upload fails?**
 - Check `logs/uploader.log` for errors
 - Try disabling VPN: set `SKIP_WIREGUARD=true` in `.env`
-- Ensure OrbStack/Docker is running
 
 **Agent not running?**
 - Check status: `launchctl list | grep vk.uploader`
 - View stderr: `cat logs/*-stderr.log`
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-**Using Docker Desktop instead of OrbStack?**
-- It works fine, just slower
-- Make sure Docker Desktop is running before uploads
-=======
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 **Docker options?**
 - **OrbStack** (recommended): Faster, lighter, native macOS performance
 - **Docker Desktop**: Works fine, just slower and heavier
@@ -344,19 +300,6 @@ GitHub Actions automatically builds multi-platform Docker images on:
 - **Pull requests**: Builds without pushing (validation only)
 
 Images are cached using GitHub Actions cache for faster builds.
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 
 ## License
 
