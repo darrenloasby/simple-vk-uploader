@@ -43,8 +43,8 @@ RUN /app/venv/bin/pip install --no-cache-dir --upgrade pip && \
 
 # Copy application files
 COPY uploader.py /app/
-COPY entrypoint.sh /app/
-RUN chmod +x /app/run.sh
+COPY run-base.sh /app/
+RUN chmod +x /app/run-base.sh
 
 # Set proper ownership
 RUN chown -R appuser:appuser /app
