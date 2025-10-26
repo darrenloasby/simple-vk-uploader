@@ -1,0 +1,26 @@
+[Unit]
+Description=VK Video Uploader Service
+Documentation=https://github.com/YOUR_USERNAME/simple-vk-uploader
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=%u
+WorkingDirectory=%h/simple-vk-uploader
+ExecStart=%h/simple-vk-uploader/scripts/vk-uploader-agent-concurrent.sh
+
+# Environment
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+
+# Logging
+StandardOutput=append:%h/simple-vk-uploader/logs/launchagent.log
+StandardError=append:%h/simple-vk-uploader/logs/launchagent.log
+SyslogIdentifier=vk-uploader
+
+# Resource limits
+Nice=1
+
+[Install]
+WantedBy=default.target

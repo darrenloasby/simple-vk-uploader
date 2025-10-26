@@ -1,0 +1,13 @@
+[Unit]
+Description=VK System Monitor Timer (runs every 3 minutes)
+Documentation=https://github.com/YOUR_USERNAME/simple-vk-uploader
+Requires=vk-system-monitor.service
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=3min
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

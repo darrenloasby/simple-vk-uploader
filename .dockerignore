@@ -1,0 +1,47 @@
+# Logs
+logs/
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Test files
+test-*.py
+test-*.sh
+
+# Local run files
+uploader-local.py
+
+# Documentation (already in image)
+*.md
+!README.md
+
+# Git
+.git/
+.gitignore
+
+# macOS
+.DS_Store
+
+# Development
+.venv/
+venv/
+
+# CI/CD
+.github/
+.claudeignore
+
+# Host scripts and configs (not needed in container)
+scripts/
+launchagents/
+wireguard/
+.env
+.env.example
+
+# Uploaded marker files
+*.uploaded
+last_uploaded.txt

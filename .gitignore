@@ -1,0 +1,29 @@
+# Directories
+logs/
+__pycache__/
+.vscode/
+
+# WireGuard configs (sensitive - use env variables for portability)
+wireguard/*.conf
+wireguard/**/*.conf
+
+# Environment and config
+.env
+.env.wg-configs
+
+# macOS
+.DS_Store
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.so
+
+# Logs
+*.log
+logs/*.txt
+
+# Upload markers (created next to video files)
+*.uploaded
