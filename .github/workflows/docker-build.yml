@@ -30,9 +30,9 @@ jobs:
             context: "."
             suffix: ""
           - name: "base"
-            dockerfile: "Dockerfile.base"
+            dockerfile: "Dockerfile.addon"
             context: "."
-            suffix: "-base"
+            suffix: "-addon"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
