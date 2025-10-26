@@ -103,14 +103,18 @@ tail -f logs/system-monitor.log
 ## Requirements
 
 - macOS
-- Docker Desktop
+- [OrbStack](https://orbstack.dev/) (or Docker Desktop)
 - [terminal-notifier](https://github.com/julienXX/terminal-notifier) (for rich notifications)
 - WireGuard configs (optional, can be disabled)
 
-Install terminal-notifier:
+Install dependencies:
 ```bash
-brew install terminal-notifier
+brew install orbstack terminal-notifier
 ```
+
+> **Note**: OrbStack is recommended for better performance and lower resource usage on macOS. Docker Desktop also works but is slower.
+>
+> **Switching from Docker Desktop to OrbStack**: Just install OrbStack and quit Docker Desktop. OrbStack automatically takes over the `docker` command. No script changes needed!
 
 ## Troubleshooting
 
@@ -120,10 +124,15 @@ brew install terminal-notifier
 **Upload fails?**
 - Check `logs/uploader.log` for errors
 - Try disabling VPN: set `SKIP_WIREGUARD=true` in `.env`
+- Ensure OrbStack/Docker is running
 
 **Agent not running?**
 - Check status: `launchctl list | grep vk.uploader`
 - View stderr: `cat logs/*-stderr.log`
+
+**Using Docker Desktop instead of OrbStack?**
+- It works fine, just slower
+- Make sure Docker Desktop is running before uploads
 
 ## License
 
