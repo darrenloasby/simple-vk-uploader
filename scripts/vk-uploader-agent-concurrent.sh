@@ -1,6 +1,6 @@
 #!/opt/homebrew/bin/bash
-# VK Video Uploader Agent - Runs periodically via LaunchAgent
-# Processes one video per run with notifications
+# VK Video Uploader Agent - CONCURRENT VERSION
+# Uploads 3 videos in parallel
 
 set -euo pipefail
 
@@ -43,22 +43,15 @@ notify() {
   local logo_path="$PROJECT_ROOT/vk-logo.png"
 
   if command -v terminal-notifier >/dev/null 2>&1; then
-    # Use terminal-notifier for clickable notifications with VK logo
     local notify_cmd=(terminal-notifier -title "VK Uploader" -subtitle "$title" -message "$message")
-
-    # Add custom image if it exists (use -contentImage for PNG files)
     if [ -f "$logo_path" ]; then
       notify_cmd+=(-contentImage "$logo_path")
     fi
-
-    # Add click action if log file specified
     if [ -n "$logfile" ] && [ -f "$logfile" ]; then
       notify_cmd+=(-execute "open -a Console $logfile")
     fi
-
     "${notify_cmd[@]}" 2>/dev/null || true
   else
-    # Fallback to osascript
     osascript -e "display notification \"$message\" with title \"VK Uploader\" subtitle \"$title\"" 2>/dev/null || true
   fi
 }
@@ -70,7 +63,7 @@ mkdir -p "$LOGS_DIR"
 AGENT_LOG="$LOGS_DIR/agent.log"
 UPLOADER_LOG="$LOGS_DIR/uploader.log"
 
-# Wrapper for log helper (to maintain backward compatibility)
+# Wrapper for log helper
 agent_log() {
   log "$*" "$AGENT_LOG"
 }
@@ -105,7 +98,6 @@ all_videos_uploaded() {
   local has_videos=false
   local all_uploaded=true
 
-  # Check all video files in this folder (not recursive)
   while IFS= read -r -d '' video_file; do
     has_videos=true
     marker_file="${video_file}.uploaded"
@@ -118,7 +110,6 @@ all_videos_uploaded() {
     -iname '*.mov' -o -iname '*.flv' -o -iname '*.wmv' -o \
     -iname '*.webm' \) -print0 2>/dev/null)
 
-  # Return true if has videos AND all are uploaded
   if [ "$has_videos" = true ] && [ "$all_uploaded" = true ]; then
     return 0
   else
@@ -126,23 +117,18 @@ all_videos_uploaded() {
   fi
 }
 
-# Recursively tag folders purple from uploaded video up to VIDEOS_DIR
+# Recursively tag folders purple
 tag_folders_recursive() {
   local video_file="$1"
   local videos_dir="$2"
-
   local current_folder
   current_folder="$(dirname "$video_file")"
 
-  # Work up the directory tree until we reach videos_dir
   while [ "$current_folder" != "$videos_dir" ] && [ "$current_folder" != "/" ]; do
-    # Check if all videos in this folder are uploaded
     if all_videos_uploaded "$current_folder"; then
       tag_folder_purple "$current_folder"
-      # Move up to parent
       current_folder="$(dirname "$current_folder")"
     else
-      # Not all videos done yet, stop checking parents
       break
     fi
   done
@@ -174,21 +160,14 @@ ensure_image() {
   if [ "$force_rebuild" = "true" ]; then
     agent_log "Force rebuilding Docker image..."
     "$DOCKER_BIN" build --no-cache -t "$IMAGE_NAME" "$PROJECT_ROOT" 2>&1 | tee -a "$AGENT_LOG"
-    agent_log "Docker image rebuilt successfully"
   else
     local image_exists
     image_exists=$("$DOCKER_BIN" images -q "$IMAGE_NAME" 2>/dev/null || true)
     if [ -z "$image_exists" ]; then
       agent_log "Building Docker image..."
-      "$DOCKER_BIN" build -t "$IMAGE_NAME" "$SCRIPT_DIR" >/dev/null 2>&1
-      agent_log "Docker image built successfully"
+      "$DOCKER_BIN" build -t "$IMAGE_NAME" "$PROJECT_ROOT" >/dev/null 2>&1
     fi
   fi
-}
-
-# Check if a vk-uploader container is already running
-is_container_running() {
-  "$DOCKER_BIN" ps --filter "name=vk-uploader-" --format "{{.Names}}" 2>/dev/null | grep -q "vk-uploader-"
 }
 
 # Check if any videos exist
@@ -199,38 +178,24 @@ has_videos() {
     -iname '*.webm' \) -print -quit 2>/dev/null | grep -q .
 }
 
-# Check for upload failure and notify
-check_upload_failure() {
-  local failure_file="$LOGS_DIR/upload_failure.txt"
-
-  if [ -f "$failure_file" ]; then
-    local video_name=$(grep "^FAILED:" "$failure_file" | cut -d' ' -f2-)
-    local reason=$(grep "^REASON:" "$failure_file" | cut -d' ' -f2-)
-
-    agent_log "Upload failed: $video_name - $reason"
-    notify "Upload Failed" "File: $video_name\nReason: $reason" "$UPLOADER_LOG"
-
-    # Remove the failure file after notifying
-    rm -f "$failure_file"
-    return 1
-  fi
-
-  return 0
+# Get available WireGuard configs
+get_wg_configs() {
+  find "$WIREGUARD_DIR" -maxdepth 1 -type f -name "*.conf" | sort
 }
 
-# Process one video
-process_video() {
-  if ! has_videos; then
-    agent_log "No videos found to process"
-    return 0
-  fi
+# Process one video in a container
+process_video_single() {
+  local container_id="$1"
+  local wg_config_file="$2"
 
-  agent_log "Processing video..."
+  # Create unique log directory for this container
+  local container_logs="$LOGS_DIR/container-${container_id}"
+  mkdir -p "$container_logs"
 
   # Build docker command
   local docker_cmd=(
     "$DOCKER_BIN" run --rm
-    --name "vk-uploader-$(date +%s)"
+    --name "vk-uploader-${container_id}-$(date +%s)"
     --privileged
     --cap-add=NET_ADMIN
     --device /dev/net/tun
@@ -247,6 +212,10 @@ process_video() {
     docker_cmd+=(--cpus "$CPU_QUOTA")
   fi
 
+  # Force specific WireGuard config (just filename, not full path)
+  local wg_config
+  wg_config="$(basename "$wg_config_file")"
+
   docker_cmd+=(
     -e VK_TOKEN="$VK_TOKEN"
     -e VIDEO_DIR="/app/videos"
@@ -254,9 +223,9 @@ process_video() {
     -e UPLOAD_CHUNK_SIZE_MB="$UPLOAD_CHUNK_SIZE_MB"
     -e PARALLEL_WORKERS="$PARALLEL_WORKERS"
     -e SKIP_WIREGUARD="$SKIP_WIREGUARD"
+    -e FORCE_WG_CONFIG="$wg_config"
   )
 
-  # Add TZ if set
   if [ -n "${TZ:-}" ]; then
     docker_cmd+=(-e TZ="$TZ")
   fi
@@ -264,74 +233,125 @@ process_video() {
   docker_cmd+=(
     -v "$VIDEOS_DIR:/app/videos:rw"
     -v "$WIREGUARD_DIR:/app/wireguard:ro"
-    -v "$LOGS_DIR:/app/logs"
+    -v "$container_logs:/app/logs"
     "$IMAGE_NAME"
   )
 
-  if "${docker_cmd[@]}"; then
-    # Check if there was a failure (exit code 0 but upload failed)
-    if ! check_upload_failure; then
-      return 1
+  agent_log "Container ${container_id}: Starting with $wg_config"
+
+  if "${docker_cmd[@]}" >> "$container_logs/docker-output.log" 2>&1; then
+    agent_log "Container ${container_id}: Success"
+    # Return uploaded file path
+    if [ -f "$container_logs/last_uploaded.txt" ]; then
+      cat "$container_logs/last_uploaded.txt"
     fi
-
-    agent_log "Upload completed successfully"
-
-    # Tag uploaded file and folders (done on host, not in container)
-    if [ -f "$LOGS_DIR/last_uploaded.txt" ]; then
-      # Read relative path from container
-      local relative_path
-      relative_path="$(cat "$LOGS_DIR/last_uploaded.txt")"
-
-      # Convert to absolute host path
-      local uploaded_file_path="$VIDEOS_DIR/$relative_path"
-
-      agent_log "Tagging uploaded file: $uploaded_file_path"
-
-      # Tag the uploaded video file blue
-      if [ -f "$uploaded_file_path" ]; then
-        tag_file_blue "$uploaded_file_path"
-
-        # Tag folders purple recursively if all videos are done
-        tag_folders_recursive "$uploaded_file_path" "$VIDEOS_DIR"
-      else
-        agent_log "WARNING: Uploaded file not found at: $uploaded_file_path"
-      fi
-
-      # Clean up
-      rm -f "$LOGS_DIR/last_uploaded.txt"
-    fi
-
-    notify "Upload Complete" "Video uploaded successfully" "$UPLOADER_LOG"
-
-    # Check if more videos remain
-    if has_videos; then
-      local remaining
-      remaining=$(find "$VIDEOS_DIR" -maxdepth 3 -type f \( \
-        -iname '*.mp4' -o -iname '*.avi' -o -iname '*.mkv' -o \
-        -iname '*.mov' -o -iname '*.flv' -o -iname '*.wmv' -o \
-        -iname '*.webm' \) 2>/dev/null | wc -l | tr -d ' ')
-      notify "Videos Remaining" "${remaining} videos remaining" "$AGENT_LOG"
-    fi
-
     return 0
   else
-    agent_log "Upload container failed - check uploader.log for details"
-    check_upload_failure  # Check for detailed failure reason
-    notify "Upload Failed" "Container failed - check logs" "$UPLOADER_LOG"
+    agent_log "Container ${container_id}: Failed"
     return 1
   fi
 }
 
-# Main
-agent_log "Agent run started"
+# Process up to 5 videos concurrently
+process_videos_concurrent() {
+  if ! has_videos; then
+    agent_log "No videos found to process"
+    return 0
+  fi
 
-# Check if a container is already running
-if is_container_running; then
-  agent_log "Skipping: container already running from previous job"
-  notify "Upload In Progress" "Previous job still running, skipping this run" "$AGENT_LOG"
-  exit 0
-fi
+  # Get available WireGuard configs
+  local wg_configs_array=()
+  while IFS= read -r config; do
+    wg_configs_array+=("$config")
+  done < <(get_wg_configs)
+
+  local num_configs=${#wg_configs_array[@]}
+  if [ "$num_configs" -eq 0 ]; then
+    agent_log "ERROR: No WireGuard configs found"
+    return 1
+  fi
+
+  # Use up to 5 concurrent uploads (or number of configs, whichever is less)
+  local num_concurrent=5
+  if [ "$num_configs" -lt 5 ]; then
+    num_concurrent=$num_configs
+  fi
+
+  agent_log "Starting $num_concurrent concurrent uploads (no wait)..."
+
+  local pids=()
+  local temp_files=()
+
+  # Launch containers immediately in parallel
+  for i in $(seq 0 $((num_concurrent - 1))); do
+    # Assign WireGuard config (cycle through if needed)
+    local config_index=$((i % num_configs))
+    local wg_config="${wg_configs_array[$config_index]}"
+
+    local temp_file=$(mktemp)
+    (process_video_single "$i" "$wg_config" > "$temp_file") &
+    pids[$i]=$!
+    temp_files[$i]="$temp_file"
+  done
+
+  # Wait for all to complete
+  local success_count=0
+  local fail_count=0
+
+  for i in $(seq 0 $((num_concurrent - 1))); do
+    if wait "${pids[$i]}"; then
+      success_count=$((success_count + 1))
+    else
+      fail_count=$((fail_count + 1))
+    fi
+  done
+
+  agent_log "Upload results: $success_count succeeded, $fail_count failed"
+
+  # Tag all successfully uploaded files
+  for i in $(seq 0 $((num_concurrent - 1))); do
+    if [ -f "${temp_files[$i]}" ]; then
+      local relative_path
+      relative_path=$(cat "${temp_files[$i]}")
+
+      if [ -n "$relative_path" ]; then
+        local uploaded_file_path="$VIDEOS_DIR/$relative_path"
+
+        if [ -f "$uploaded_file_path" ]; then
+          tag_file_blue "$uploaded_file_path"
+          tag_folders_recursive "$uploaded_file_path" "$VIDEOS_DIR"
+        fi
+      fi
+
+      rm -f "${temp_files[$i]}"
+    fi
+  done
+
+  # Clean up container logs after delay
+  (sleep 120 && rm -rf "$LOGS_DIR/container-"*) &
+
+  # Notify
+  if [ $success_count -gt 0 ]; then
+    notify "Upload Complete" "${success_count} of ${num_concurrent} videos uploaded" "$UPLOADER_LOG"
+  fi
+  if [ $fail_count -gt 0 ]; then
+    notify "Upload Warning" "${fail_count} of ${num_concurrent} uploads failed" "$UPLOADER_LOG"
+  fi
+
+  # Check remaining
+  if has_videos; then
+    local remaining
+    remaining=$(find "$VIDEOS_DIR" -maxdepth 3 -type f \( \
+      -iname '*.mp4' -o -iname '*.avi' -o -iname '*.mkv' -o \
+      -iname '*.mov' -o -iname '*.flv' -o -iname '*.wmv' -o \
+      -iname '*.webm' \) 2>/dev/null | wc -l | tr -d ' ')
+    notify "Videos Remaining" "${remaining} videos remaining" "$AGENT_LOG"
+  fi
+}
+
+# Main
+agent_log "Agent run started (CONCURRENT MODE)"
 
 ensure_image
-process_video
+process_videos_concurrent
 agent_log "Agent run completed"

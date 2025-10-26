@@ -1,5 +1,4 @@
 # Directories
-trash/
 logs/
 wireguard/
 __pycache__/
@@ -20,4 +19,7 @@ __pycache__/
 
 # Logs
 *.log
-*.txt
+logs/*.txt
+
+# Upload markers (created next to video files)
+*.uploaded

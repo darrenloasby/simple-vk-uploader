@@ -191,10 +191,20 @@ class WireGuardManager:
     
     def get_next_config(self) -> Optional[Path]:
         """Get the next WireGuard configuration to use"""
+        # Check if a specific config is forced via environment variable
+        forced_config = os.getenv('FORCE_WG_CONFIG')
+        if forced_config:
+            forced_path = self.wg_dir / forced_config
+            if forced_path.exists():
+                logger.info(f"Using forced WireGuard config: {forced_config}")
+                return forced_path
+            else:
+                logger.warning(f"Forced config {forced_config} not found, using rotation")
+
         configs = self.get_available_configs()
         if not configs:
             return None
-        
+
         # Read last used config
         last_config = None
         if self.last_config_file.exists():
@@ -202,7 +212,7 @@ class WireGuardManager:
                 last_config = self.last_config_file.read_text().strip()
             except Exception as e:
                 logger.warning(f"Could not read last config file: {e}")
-        
+
         # Find next config (simple rotation)
         if last_config:
             try:
@@ -212,7 +222,7 @@ class WireGuardManager:
                 return configs[next_index]
             except (ValueError, IndexError):
                 pass
-        
+
         # Return first config or random if last not found
         return configs[0]
     
@@ -431,28 +441,32 @@ class VKUploader:
         return self.create_playlist(folder_name)
     
     def find_video_file(self, directory: str) -> Optional[Path]:
-        """Find the first valid video file in directory"""
+        """Find the first valid video file in directory that hasn't been uploaded (not tagged blue)"""
         video_extensions = {'.mp4', '.avi', '.mkv', '.mov', '.flv', '.wmv', '.webm'}
-        
+
         directory_path = Path(directory)
         if not directory_path.exists():
             logger.error(f"Directory does not exist: {directory}")
             return None
-        
+
         # Find all video files
         video_files = []
         for ext in video_extensions:
             video_files.extend(directory_path.glob(f"**/*{ext}"))
             video_files.extend(directory_path.glob(f"**/*{ext.upper()}"))
-        
+
         if not video_files:
             logger.warning(f"No video files found in {directory}")
             return None
-        
-        # Return first video file found
-        video_file = video_files[0]
-        logger.info(f"Found video file: {video_file}")
-        return video_file
+
+        # Find first video file that is NOT tagged blue (i.e., not yet uploaded)
+        for video_file in video_files:
+            if not self.is_file_tagged_blue(video_file):
+                logger.info(f"Found untagged video file: {video_file}")
+                return video_file
+
+        logger.info("All video files are already tagged blue (uploaded)")
+        return None
     
     def _check_upload_status(self, upload_url: str) -> int:
         """Check the upload status and return the last known byte"""
@@ -810,33 +824,22 @@ class VKUploader:
         self.last_failure_reason = f"All {max_retries} upload attempts failed"
         return False
     
-    def move_to_trash(self, video_path: Path):
-        """Move video file to trash directory (macOS Trash if mounted)"""
+    def is_file_tagged_blue(self, file_path: Path) -> bool:
+        """Check if file has blue tag by looking for a marker file"""
         try:
-            trash_dir = Path("/app/trash")
+            marker_file = file_path.with_suffix(file_path.suffix + '.uploaded')
+            return marker_file.exists()
+        except Exception:
+            return False
 
-            # Check if trash is mounted (macOS .Trash directory)
-            if not trash_dir.exists():
-                trash_dir.mkdir(exist_ok=True)
-                logger.debug(f"Created trash directory: {trash_dir}")
-
-            destination = trash_dir / video_path.name
-
-            # Handle filename conflicts
-            if destination.exists():
-                base = destination.stem
-                ext = destination.suffix
-                counter = 1
-                while destination.exists():
-                    destination = trash_dir / f"{base}_{counter}{ext}"
-                    counter += 1
-
-            # Use shutil.move instead of Path.rename to handle cross-device moves
-            shutil.move(str(video_path), str(destination))
-            logger.info(f"Moved {video_path.name} to trash")
-
+    def mark_file_uploaded(self, video_path: Path):
+        """Create a marker file to indicate video was uploaded"""
+        try:
+            marker_file = video_path.with_suffix(video_path.suffix + '.uploaded')
+            marker_file.write_text(f"Uploaded at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            logger.info(f"Created upload marker for {video_path.name}")
         except Exception as e:
-            logger.error(f"Error moving file to trash: {e}")
+            logger.error(f"Error creating upload marker: {e}")
 
 def write_failure_status(video_path: Path, reason: str):
     """Write failure status to a file that can be checked by the agent"""
@@ -918,7 +921,18 @@ def main():
 
         # Upload video with playlist
         if uploader.upload_video(video_file, playlist_id=playlist_id):
-            uploader.move_to_trash(video_file)
+            # Mark file as uploaded (host will handle Finder tags)
+            uploader.mark_file_uploaded(video_file)
+
+            # Write uploaded video path relative to /app/videos for host tagging
+            # The host will prepend $VIDEOS_DIR to get the actual path
+            try:
+                relative_path = video_file.relative_to("/app/videos")
+                uploaded_file = Path("/app/logs/last_uploaded.txt")
+                uploaded_file.write_text(str(relative_path))
+            except ValueError:
+                logger.warning(f"Could not make path relative: {video_file}")
+
             logger.info("Video processing completed successfully")
             # Remove any previous failure status
             failure_file = Path("/app/logs/upload_failure.txt")

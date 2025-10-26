@@ -30,3 +30,18 @@ uploader-local.py
 # Development
 .venv/
 venv/
+
+# CI/CD
+.github/
+.claudeignore
+
+# Host scripts and configs (not needed in container)
+scripts/
+launchagents/
+wireguard/
+.env
+.env.example
+
+# Uploaded marker files
+*.uploaded
+last_uploaded.txt

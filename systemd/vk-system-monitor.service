@@ -1,0 +1,21 @@
+[Unit]
+Description=VK System Monitor Service
+Documentation=https://github.com/YOUR_USERNAME/simple-vk-uploader
+After=network.target
+
+[Service]
+Type=oneshot
+User=%u
+WorkingDirectory=%h/simple-vk-uploader
+ExecStart=%h/simple-vk-uploader/scripts/vk-system-monitor.sh
+
+# Environment
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+
+# Logging
+StandardOutput=append:%h/simple-vk-uploader/logs/system-monitor-stdout.log
+StandardError=append:%h/simple-vk-uploader/logs/system-monitor-stderr.log
+SyslogIdentifier=vk-system-monitor
+
+[Install]
+WantedBy=default.target

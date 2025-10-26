@@ -1,0 +1,13 @@
+[Unit]
+Description=VK Video Uploader Timer (runs every 5 minutes)
+Documentation=https://github.com/YOUR_USERNAME/simple-vk-uploader
+Requires=vk-uploader.service
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

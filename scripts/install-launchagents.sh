@@ -44,12 +44,10 @@ mkdir -p "$LAUNCHAGENTS_DIR"
 # Define agents to install (simple arrays for bash 3.2 compatibility)
 AGENT_PLISTS=(
   "com.vk.uploader.agent.plist"
-  "com.vk.uploader.trash-cleanup.plist"
 )
 
 AGENT_DESCRIPTIONS=(
   "VK Uploader Agent (runs every 5 minutes)"
-  "Trash Cleanup (runs daily at 2 AM)"
 )
 
 
@@ -114,15 +112,13 @@ print_status "$YELLOW" "Management Commands:"
 echo ""
 echo "  View logs:"
 echo "    tail -f $PROJECT_ROOT/logs/agent.log"
-echo "    tail -f $PROJECT_ROOT/logs/trash-cleanup.log"
+echo "    tail -f $PROJECT_ROOT/logs/uploader.log"
 echo ""
-echo "  Unload agents:"
+echo "  Unload agent:"
 echo "    launchctl unload ~/Library/LaunchAgents/com.vk.uploader.agent.plist"
-echo "    launchctl unload ~/Library/LaunchAgents/com.vk.uploader.trash-cleanup.plist"
 echo ""
-echo "  Reload agents:"
+echo "  Reload agent:"
 echo "    launchctl load ~/Library/LaunchAgents/com.vk.uploader.agent.plist"
-echo "    launchctl load ~/Library/LaunchAgents/com.vk.uploader.trash-cleanup.plist"
 echo ""
 echo "  Check status:"
 echo "    launchctl list | grep vk.uploader"
@@ -141,7 +137,8 @@ notify "Installation Complete" "VK Uploader LaunchAgents are now installed and r
 
 print_status "$GREEN" "🎉 All done! The VK Uploader will now run automatically."
 print_status "$GREEN" "   - Videos will be processed every 5 minutes"
-print_status "$GREEN" "   - Trash cleanup runs daily at 2 AM"
+print_status "$GREEN" "   - Uploaded files are tagged BLUE in Finder"
+print_status "$GREEN" "   - Completed folders are tagged PURPLE in Finder"
 print_status "$GREEN" "   - Playlists are created based on folder names"
 echo ""
 
