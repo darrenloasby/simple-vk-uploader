@@ -1,4 +1,4 @@
-name: Build Multi-Platform Docker Images
+name: Build Docker Images
 
 on:
   push:
@@ -11,12 +11,9 @@ on:
       - main
   workflow_dispatch:
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-
 jobs:
-  build:
+  build-normal:
+    name: Build Normal (${{ matrix.arch.name }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -24,15 +21,12 @@ jobs:
 
     strategy:
       matrix:
-        variant:
-          - name: "main"
-            dockerfile: "Dockerfile"
-            context: "."
-            suffix: ""
-          - name: "base"
-            dockerfile: "Dockerfile.addon"
-            context: "."
-            suffix: "-addon"
+        arch:
+          - name: amd64
+            platform: linux/amd64
+          - name: aarch64
+            platform: linux/arm64
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -47,37 +41,91 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for ${{ matrix.variant.name }}
+      - name: Extract metadata for ${{ matrix.arch.name }} image
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ghcr.io/darrenloasby/${{ matrix.arch.name }}-simple-vk-uploader
           tags: |
-            type=ref,event=branch,suffix=${{ matrix.variant.suffix }}
-            type=ref,event=pr,suffix=${{ matrix.variant.suffix }}
-            type=semver,pattern={{version}},suffix=${{ matrix.variant.suffix }}
-            type=semver,pattern={{major}}.{{minor}},suffix=${{ matrix.variant.suffix }}
-            type=semver,pattern={{major}},suffix=${{ matrix.variant.suffix }}
-            type=sha,prefix={{branch}}-,suffix=${{ matrix.variant.suffix }}
-            type=raw,value=latest${{ matrix.variant.suffix }},enable={{is_default_branch}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short,prefix=
 
-      - name: Build and push ${{ matrix.variant.name }} Docker image
+      - name: Build and push ${{ matrix.arch.name }} image
         uses: docker/build-push-action@v5
         with:
-          context: ${{ matrix.variant.context }}
-          file: ${{ matrix.variant.context }}/${{ matrix.variant.dockerfile }}
-          platforms: linux/amd64,linux/arm64
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ matrix.arch.platform }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.variant.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.variant.name }}
+          cache-from: type=gha,scope=normal-${{ matrix.arch.name }}
+          cache-to: type=gha,mode=max,scope=normal-${{ matrix.arch.name }}
 
-      - name: Image digest for ${{ matrix.variant.name }}
+      - name: Image info for ${{ matrix.arch.name }}
         run: |
-          echo "Built and pushed ${{ matrix.variant.name }} image with tags:"
+          echo "Built and pushed ${{ matrix.arch.name }} image with tags:"
+          echo "${{ steps.meta.outputs.tags }}"
+
+  build-addon:
+    name: Build Add-on (${{ matrix.arch.name }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        arch:
+          - name: amd64
+            platform: linux/amd64
+          - name: aarch64
+            platform: linux/arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for ${{ matrix.arch.name }} addon
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/darrenloasby/${{ matrix.arch.name }}-simple-vk-uploader-addon
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short,prefix=
+
+      - name: Build and push ${{ matrix.arch.name }} addon image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.addon
+          platforms: ${{ matrix.arch.platform }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=addon-${{ matrix.arch.name }}
+          cache-to: type=gha,mode=max,scope=addon-${{ matrix.arch.name }}
+
+      - name: Image info for ${{ matrix.arch.name }}
+        run: |
+          echo "Built and pushed ${{ matrix.arch.name }} addon variant with tags:"
           echo "${{ steps.meta.outputs.tags }}"

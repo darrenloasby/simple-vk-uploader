@@ -1,12 +1,11 @@
 name: VK Video Uploader
-version: "1.0.0"
+version: "0.0.1"
 slug: vk-uploader
 description: Automated VK video uploader with WireGuard VPN rotation and concurrent uploads
 url: https://github.com/darrenloasby/simple-vk-uploader
 arch:
   - amd64
   - aarch64
-  - armv7
 startup: application
 boot: auto
 init: false
@@ -21,8 +20,6 @@ map:
   - type: share
     read_only: False
   - type: media
-    read_only: False
-  - type: homeassistant_config
     read_only: False
 
 # Default options that appear in the UI
@@ -56,5 +53,5 @@ schema:
       peer_endpoint: str
       peer_allowed_ips: str?
 
-# Docker image to use
-image: ghcr.io/darrenloasby/simple-vk-uploader-addon
+# Docker image to use - {arch} is replaced by Home Assistant with amd64 or aarch64
+image: ghcr.io/darrenloasby/{arch}-simple-vk-uploader-addon

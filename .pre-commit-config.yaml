@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: update-config-version
+        name: Update config.yaml version from git tags
+        entry: python3 scripts/update_config_version.py
+        language: system
+        pass_filenames: false
+        always_run: true
