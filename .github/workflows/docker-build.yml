@@ -45,14 +45,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata for ${{ matrix.arch.name }} image
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/darrenloasby/${{ matrix.arch.name }}-simple-vk-uploader
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,format=short,prefix=
+      - name: Prepare tags
+        id: vars
+        run: |
+          echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push ${{ matrix.arch.name }} image
         uses: docker/build-push-action@v5
@@ -61,15 +57,20 @@ jobs:
           file: ./Dockerfile
           platforms: ${{ matrix.arch.platform }}
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ghcr.io/darrenloasby/${{ matrix.arch.name }}-simple-vk-uploader:latest
+            ghcr.io/darrenloasby/${{ matrix.arch.name }}-simple-vk-uploader:${{ steps.vars.outputs.short_sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=normal-${{ matrix.arch.name }}
           cache-to: type=gha,mode=max,scope=normal-${{ matrix.arch.name }}
 
       - name: Image info for ${{ matrix.arch.name }}
         run: |
           echo "Built and pushed ${{ matrix.arch.name }} image with tags:"
-          echo "${{ steps.meta.outputs.tags }}"
+          echo "latest"
+          echo "${{ steps.vars.outputs.short_sha }}"
 
   build-addon:
     name: Build Add-on (${{ matrix.arch.name }})
@@ -104,14 +105,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata for ${{ matrix.arch.name }} addon
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/darrenloasby/${{ matrix.arch.name }}-simple-vk-uploader-addon
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,format=short,prefix=
+      - name: Prepare tags
+        id: vars
+        run: |
+          echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push ${{ matrix.arch.name }} addon image
         uses: docker/build-push-action@v5
@@ -120,12 +117,17 @@ jobs:
           file: ./Dockerfile.addon
           platforms: ${{ matrix.arch.platform }}
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ghcr.io/darrenloasby/${{ matrix.arch.name }}-simple-vk-uploader-addon:latest
+            ghcr.io/darrenloasby/${{ matrix.arch.name }}-simple-vk-uploader-addon:${{ steps.vars.outputs.short_sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=addon-${{ matrix.arch.name }}
           cache-to: type=gha,mode=max,scope=addon-${{ matrix.arch.name }}
 
       - name: Image info for ${{ matrix.arch.name }}
         run: |
           echo "Built and pushed ${{ matrix.arch.name }} addon variant with tags:"
-          echo "${{ steps.meta.outputs.tags }}"
+          echo "latest"
+          echo "${{ steps.vars.outputs.short_sha }}"

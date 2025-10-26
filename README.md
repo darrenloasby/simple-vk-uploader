@@ -316,7 +316,7 @@ Pre-built multi-platform images are available via GitHub Container Registry:
 
 ```bash
 # Pull latest addon image
-docker pull ghcr.io/darrenloasby/vk-uploader-addon:latest
+docker pull ghcr.io/darrenloasby/simple-vk-uploader-addon:latest
 
 # Or use in docker-compose.yml (already configured)
 docker-compose pull
@@ -328,7 +328,7 @@ docker-compose pull
 
 ```bash
 # Pull latest base image (requires host scripts)
-docker pull ghcr.io/darrenloasby/vk-uploader:latest
+docker pull ghcr.io/darrenloasby/simple-vk-uploader:latest
 ```
 
 **Use this for:** Host-integrated mode with LaunchAgent (macOS) or systemd (Linux)
