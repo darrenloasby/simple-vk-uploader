@@ -27,9 +27,11 @@ jobs:
         variant:
           - name: "main"
             dockerfile: "Dockerfile"
+            context: "."
             suffix: ""
           - name: "base"
             dockerfile: "Dockerfile.base"
+            context: "."
             suffix: "-base"
     steps:
       - name: Checkout repository
