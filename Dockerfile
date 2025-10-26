@@ -1,6 +1,7 @@
-# Simplified VK Video Uploader with WireGuard Rotation
+# VK Video Uploader - Home Assistant Addon
+# Continuously polls directory and uploads up to 5 videos concurrently with WireGuard rotation
 FROM alpine:3.19
-# RUN apk update && apk search --no-cache fswatch
+
 # Install system dependencies
 RUN apk add --no-cache \
     tzdata \
@@ -13,28 +14,20 @@ RUN apk add --no-cache \
     py3-pip \
     wireguard-tools \
     iptables \
+    ip6tables \
     iproute2 \
     bind-tools \
     curl \
     bash \
-    sudo \
+    jq \
     && rm -rf /var/cache/apk/*
-
-# Allow passwordless sudo for WireGuard operations
-RUN echo 'appuser ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
-
-# Create app user
-RUN addgroup -g 1000 appuser && \
-    adduser -D -u 1000 -G appuser appuser
 
 # Set up application directory
 WORKDIR /app
-RUN mkdir -p /app/{wireguard,logs} && \
-    chown -R appuser:appuser /app
+RUN mkdir -p /app/{wireguard,logs}
 
-# Create virtual environment as root (before switching to appuser)
-RUN python3 -m venv /app/venv && \
-    chown -R appuser:appuser /app/venv
+# Create virtual environment
+RUN python3 -m venv /app/venv
 
 # Copy requirements and install dependencies in venv
 COPY requirements.txt /app/
@@ -43,20 +36,32 @@ RUN /app/venv/bin/pip install --no-cache-dir --upgrade pip && \
 
 # Copy application files
 COPY uploader.py /app/
-COPY entrypoint.sh /app/
-RUN chmod +x /app/entrypoint.sh
-
-# Set proper ownership
-RUN chown -R appuser:appuser /app
+COPY uploader-standalone.py /app/
+COPY setup-ha-config.sh /app/
+COPY run.sh /app/
+RUN chmod +x /app/run.sh /app/setup-ha-config.sh
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1 \
     LOG_LEVEL=INFO \
     PATH="/app/venv/bin:$PATH" \
-    VIRTUAL_ENV=/app/venv
+    VIRTUAL_ENV=/app/venv \
+    POLL_INTERVAL=300 \
+    MAX_CONCURRENT=5 \
+    UPLOAD_CHUNK_SIZE_MB=10 \
+    PARALLEL_WORKERS=3
 
-# Switch to non-root user
-USER appuser
+# Health check
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+    CMD pgrep -f "python.*uploader-standalone.py" || exit 1
+
+# Labels for Home Assistant
+LABEL \
+    io.hass.name="VK Video Uploader" \
+    io.hass.description="Automated VK video uploader with WireGuard VPN rotation" \
+    io.hass.arch="amd64|aarch64|armv7" \
+    io.hass.type="addon" \
+    io.hass.version="1.0.0"
 
 # Entry point
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT ["/app/run.sh"]

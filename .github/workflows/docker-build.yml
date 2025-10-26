@@ -25,15 +25,14 @@ jobs:
     strategy:
       matrix:
         variant:
-          - name: "base"
+          - name: "main"
             dockerfile: "Dockerfile"
             context: "."
             suffix: ""
-          - name: "standalone"
-            dockerfile: "Dockerfile"
-            context: "vk-uploader"
-            suffix: "-standalone"
-
+          - name: "base"
+            dockerfile: "Dockerfile.base"
+            context: ""
+            suffix: "-base"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
