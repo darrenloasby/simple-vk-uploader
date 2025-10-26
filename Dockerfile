@@ -3,6 +3,7 @@ FROM alpine:3.19
 # RUN apk update && apk search --no-cache fswatch
 # Install system dependencies
 RUN apk add --no-cache \
+    tzdata \
     make \
     gcc \
     musl-dev \

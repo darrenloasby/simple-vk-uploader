@@ -5,7 +5,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
+
+# Load shared log helper
+source "$SCRIPT_DIR/log-helper.sh"
 
 # Load environment
 if [ -f .env ]; then
@@ -14,8 +18,8 @@ if [ -f .env ]; then
   set +a
 fi
 
-TRASH_DIR="${TRASH_DIR:-$SCRIPT_DIR/trash}"
-LOGS_DIR="${LOGS_DIR:-$SCRIPT_DIR/logs}"
+TRASH_DIR="${TRASH_DIR:-$PROJECT_ROOT/trash}"
+LOGS_DIR="${LOGS_DIR:-$PROJECT_ROOT/logs}"
 MACOS_TRASH="$HOME/.Trash"
 
 # Ensure directories exist
@@ -25,21 +29,45 @@ mkdir -p "$LOGS_DIR"
 TRASH_DIR="$(cd "$TRASH_DIR" 2>/dev/null && pwd || echo "$TRASH_DIR")"
 LOGS_DIR="$(cd "$LOGS_DIR" && pwd)"
 
-# Log helper
-log() {
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOGS_DIR/trash-cleanup.log"
+# Set up log file
+CLEANUP_LOG="$LOGS_DIR/trash-cleanup.log"
+
+# Wrapper for log helper
+cleanup_log() {
+  log "$*" "$CLEANUP_LOG"
 }
 
-# Notification helper
+# Notification helper with optional log file to open on click
 notify() {
   local title="$1"
   local message="$2"
-  osascript -e "display notification \"$message\" with title \"VK Uploader\" subtitle \"$title\"" 2>/dev/null || true
+  local logfile="${3:-}"
+  local logo_path="$PROJECT_ROOT/vk-logo.png"
+
+  if command -v terminal-notifier >/dev/null 2>&1; then
+    # Use terminal-notifier for clickable notifications with VK logo
+    local notify_cmd=(terminal-notifier -title "VK Uploader" -subtitle "$title" -message "$message")
+
+    # Add custom image if it exists (use -contentImage for PNG files)
+    if [ -f "$logo_path" ]; then
+      notify_cmd+=(-contentImage "$logo_path")
+    fi
+
+    # Add click action if log file specified
+    if [ -n "$logfile" ] && [ -f "$logfile" ]; then
+      notify_cmd+=(-execute "open -a Console $logfile")
+    fi
+
+    "${notify_cmd[@]}" 2>/dev/null || true
+  else
+    # Fallback to osascript
+    osascript -e "display notification \"$message\" with title \"VK Uploader\" subtitle \"$title\"" 2>/dev/null || true
+  fi
 }
 
 # Check if trash directory exists and has files
 if [ ! -d "$TRASH_DIR" ]; then
-  log "Trash directory does not exist: $TRASH_DIR"
+  cleanup_log "Trash directory does not exist: $TRASH_DIR"
   exit 0
 fi
 
@@ -47,11 +75,11 @@ fi
 file_count=$(find "$TRASH_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')
 
 if [ "$file_count" -eq 0 ]; then
-  log "No files in trash to clean up"
+  cleanup_log "No files in trash to clean up"
   exit 0
 fi
 
-log "Found $file_count file(s) in trash, moving to macOS Trash..."
+cleanup_log "Found $file_count file(s) in trash, moving to macOS Trash..."
 
 # Move files to macOS Trash
 moved_count=0
@@ -83,17 +111,17 @@ find "$TRASH_DIR" -type f -print0 2>/dev/null | while IFS= read -r -d '' file; d
 
   if mv "$file" "$destination" 2>/dev/null; then
     moved_count=$((moved_count + 1))
-    log "Moved: $filename"
+    cleanup_log "Moved: $filename"
   else
     failed_count=$((failed_count + 1))
-    log "Failed to move: $filename"
+    cleanup_log "Failed to move: $filename"
   fi
 done
 
-log "Cleanup complete: $moved_count moved, $failed_count failed"
+cleanup_log "Cleanup complete: $moved_count moved, $failed_count failed"
 
 if [ "$moved_count" -gt 0 ]; then
-  notify "Trash Cleanup" "Moved $moved_count file(s) to macOS Trash"
+  notify "Trash Cleanup" "Moved $moved_count file(s) to macOS Trash" "$CLEANUP_LOG"
 fi
 
 # Clean up empty directories

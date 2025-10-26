@@ -5,7 +5,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
 
 LAUNCHAGENTS_DIR="$HOME/Library/LaunchAgents"
 
@@ -51,21 +52,6 @@ AGENT_DESCRIPTIONS=(
   "Trash Cleanup (runs daily at 2 AM)"
 )
 
-# Check if old watcher is running and offer to uninstall
-OLD_WATCHER="com.vk.uploader.watch.plist"
-if [ -f "$LAUNCHAGENTS_DIR/$OLD_WATCHER" ]; then
-  print_status "$YELLOW" "⚠  Old watcher LaunchAgent detected: $OLD_WATCHER"
-  echo ""
-  read -p "Do you want to uninstall the old watcher? (y/n) " -n 1 -r
-  echo ""
-  if [[ $REPLY =~ ^[Yy]$ ]]; then
-    print_status "$BLUE" "Unloading old watcher..."
-    launchctl unload "$LAUNCHAGENTS_DIR/$OLD_WATCHER" 2>/dev/null || true
-    rm "$LAUNCHAGENTS_DIR/$OLD_WATCHER"
-    print_status "$GREEN" "✓ Old watcher uninstalled"
-  fi
-  echo ""
-fi
 
 # Install each agent
 for i in "${!AGENT_PLISTS[@]}"; do
@@ -76,8 +62,8 @@ for i in "${!AGENT_PLISTS[@]}"; do
   print_status "$BLUE" "  Plist: $plist"
 
   # Check if plist file exists
-  if [ ! -f "$plist" ]; then
-    print_status "$RED" "  ✗ Error: $plist not found in $SCRIPT_DIR"
+  if [ ! -f "launchagents/$plist" ]; then
+    print_status "$RED" "  ✗ Error: $plist not found in $PROJECT_ROOT/launchagents"
     continue
   fi
 
@@ -91,7 +77,7 @@ for i in "${!AGENT_PLISTS[@]}"; do
   print_status "$BLUE" "  - Expanding variables in plist..."
   sed -e "s|\$HOME|$HOME|g" \
       -e "s|/Users/dlo|$HOME|g" \
-      "$plist" > "$LAUNCHAGENTS_DIR/$plist"
+      "launchagents/$plist" > "$LAUNCHAGENTS_DIR/$plist"
   print_status "$GREEN" "  ✓ Installed to $LAUNCHAGENTS_DIR"
 
   # Load the agent
@@ -127,16 +113,16 @@ echo ""
 print_status "$YELLOW" "Management Commands:"
 echo ""
 echo "  View logs:"
-echo "    tail -f $SCRIPT_DIR/logs/agent.log"
-echo "    tail -f $SCRIPT_DIR/logs/trash-cleanup.log"
+echo "    tail -f $PROJECT_ROOT/logs/agent.log"
+echo "    tail -f $PROJECT_ROOT/logs/trash-cleanup.log"
 echo ""
 echo "  Unload agents:"
-echo "    launchctl unload $LAUNCHAGENTS_DIR/com.vk.uploader.agent.plist"
-echo "    launchctl unload $LAUNCHAGENTS_DIR/com.vk.uploader.trash-cleanup.plist"
+echo "    launchctl unload ~/Library/LaunchAgents/com.vk.uploader.agent.plist"
+echo "    launchctl unload ~/Library/LaunchAgents/com.vk.uploader.trash-cleanup.plist"
 echo ""
 echo "  Reload agents:"
-echo "    launchctl load $LAUNCHAGENTS_DIR/com.vk.uploader.agent.plist"
-echo "    launchctl load $LAUNCHAGENTS_DIR/com.vk.uploader.trash-cleanup.plist"
+echo "    launchctl load ~/Library/LaunchAgents/com.vk.uploader.agent.plist"
+echo "    launchctl load ~/Library/LaunchAgents/com.vk.uploader.trash-cleanup.plist"
 echo ""
 echo "  Check status:"
 echo "    launchctl list | grep vk.uploader"
@@ -144,7 +130,7 @@ echo ""
 
 # Build Docker image
 print_status "$BLUE" "Building Docker image..."
-if docker build -t vk-uploader . >/dev/null 2>&1; then
+if docker build --no-cache -t vk-uploader . >/dev/null 2>&1; then
   print_status "$GREEN" "✓ Docker image built successfully"
 else
   print_status "$YELLOW" "⚠ Could not build Docker image (will build on first run)"
@@ -157,4 +143,17 @@ print_status "$GREEN" "🎉 All done! The VK Uploader will now run automatically
 print_status "$GREEN" "   - Videos will be processed every 5 minutes"
 print_status "$GREEN" "   - Trash cleanup runs daily at 2 AM"
 print_status "$GREEN" "   - Playlists are created based on folder names"
+echo ""
+
+# Show optional system monitor info
+print_status "$YELLOW" "Optional: System Monitoring"
+echo ""
+echo "  To enable system monitoring (logs CPU, memory, network stats every 3 minutes):"
+echo "    launchctl load ~/Library/LaunchAgents/com.vk.system-monitor.plist"
+echo ""
+echo "  To disable it later:"
+echo "    launchctl unload ~/Library/LaunchAgents/com.vk.system-monitor.plist"
+echo ""
+echo "  View monitoring logs:"
+echo "    tail -f $PROJECT_ROOT/logs/system-monitor.log"
 echo ""

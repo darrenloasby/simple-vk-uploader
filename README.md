@@ -1,96 +1,130 @@
-# VK Video Uploader - LaunchAgent Edition
+# VK Video Uploader
 
-Automatic VK video uploader with WireGuard rotation, playlist management, and macOS LaunchAgent integration.
+Automated VK video uploader with WireGuard VPN rotation, folder-based playlists, and macOS notifications.
 
 ## Features
 
-- **Automatic Upload Daemon**: Runs every 5 minutes via macOS LaunchAgent
-- **VK Playlist Management**: Automatically creates playlists based on folder structure
-- **macOS Notifications**: Get notified about upload status and progress
-- **WireGuard Rotation**: Automatically rotates through WireGuard configurations
-- **Trash Management**: Automatic cleanup of processed videos to macOS Trash
-- **Chunked Uploads**: Efficient parallel chunked uploads for large files
-- **Self-Installing**: Simple installation script sets up everything
+- **Automatic Processing**: Runs every 5 minutes via macOS LaunchAgent
+- **Smart Playlists**: Creates VK albums based on folder structure
+- **WireGuard Rotation**: Cycles through VPN configs for each upload
+- **Notifications**: Upload status alerts with VK logo (clickable to view logs)
+- **Auto Cleanup**: Moves uploaded videos to macOS Trash
+- **Parallel Uploads**: Efficient chunked uploads for large files
 
-## Usage
+## Quick Start
 
-### Build the Docker image
+1. **Setup environment**:
+   ```bash
+   cp .env.example .env
+   # Edit .env and add your VK_TOKEN
+   ```
 
-```bash
-cd simple-uploader
-docker build -t vk-simple-uploader .
-```
+2. **Install**:
+   ```bash
+   ./scripts/install-launchagents.sh
+   ```
 
-### Run with a video directory
+That's it! The uploader will now run automatically every 5 minutes.
 
-```bash
-docker run --rm \
-  --privileged \
-  --cap-add=NET_ADMIN \
-  -e VK_TOKEN="your_vk_token_here" \
-  -v "/path/to/videos:/app/videos:ro" \
-  -v "/path/to/wireguard/configs:/app/wireguard:ro" \
-  -v "/path/to/logs:/app/logs" \
-  -v "/path/to/trash:/app/trash" \
-  vk-simple-uploader
-```
+## Configuration
 
-### Required Environment Variables
-
-- `VK_TOKEN`: Your VK API token
-
-### Optional Environment Variables
-
-- `VIDEO_DIR`: Path to video directory inside container (default: `/app/videos`)
-- `LOG_LEVEL`: Logging level (default: `INFO`)
-
-### Volume Mounts
-
-- `/app/videos`: Directory containing video files (read-only)
-- `/app/wireguard`: Directory containing WireGuard `.conf` files (read-only)
-- `/app/logs`: Directory for log files
-- `/app/trash`: Directory where processed videos are moved
-
-## Example Command
+Edit `.env` to customize:
 
 ```bash
-docker run --rm \
-  --privileged \
-  --cap-add=NET_ADMIN \
-  -e VK_TOKEN="vk1.a.your_token_here" \
-  -v "/Users/username/Videos:/app/videos:ro" \
-  -v "/Users/username/wireguard:/app/wireguard:ro" \
-  -v "/Users/username/logs:/app/logs" \
-  -v "/Users/username/.Trash:/app/trash" \
-  vk-simple-uploader
+VK_TOKEN=your_vk_token_here
+VIDEOS_DIR=$HOME/Videos              # Default if not set
+WIREGUARD_DIR=$HOME/wireguard        # Optional, for VPN
+LOG_LEVEL=INFO
+SKIP_WIREGUARD=false                 # Set to true to disable VPN
 ```
 
-## Behavior
+## Folder Structure
 
-1. Rotates to next WireGuard configuration
-2. Finds first video file in the specified directory
-3. Uploads video to VK
-4. Moves video to trash directory
-5. Logs network traffic and upload statistics
-6. Exits
+Videos are organized into VK playlists based on folder names:
 
-For continuous processing, run the container repeatedly (e.g., via cron job or loop).
+```
+videos/
+├── Vacation 2024/       → Creates "Vacation 2024" playlist
+│   ├── video1.mp4
+│   └── video2.mp4
+└── Birthday Party/      → Creates "Birthday Party" playlist
+    └── party.mp4
+```
 
-## Logs
+## Management
 
-- `uploader.log`: Main application logs
-- `last_wg_conf.txt`: Tracks last used WireGuard configuration
+**View logs**:
+```bash
+tail -f logs/agent.log
+tail -f logs/uploader.log
+```
 
-## Technical Details
+**Manual run** (for testing):
+```bash
+./scripts/vk-uploader-agent.sh
+```
 
-- Uses Python virtual environment (`/app/venv`) for dependency isolation
-- All Python packages installed in venv, not system-wide
-- Alpine Linux base image for minimal size
-- Non-root user (`appuser`) for security
+**Stop/start agents**:
+```bash
+# Stop
+launchctl unload ~/Library/LaunchAgents/com.vk.uploader.agent.plist
 
-## Security Notes
+# Start
+launchctl load ~/Library/LaunchAgents/com.vk.uploader.agent.plist
+```
 
-- Container requires `--privileged` and `NET_ADMIN` capabilities for WireGuard
-- WireGuard configurations should have proper file permissions (600)
-- VK token should be kept secure
-- Dependencies isolated in virtual environment
+**Uninstall**:
+```bash
+./scripts/uninstall-launchagents.sh
+```
+
+## Optional: System Monitoring
+
+Monitor network, CPU, memory, and disk I/O (logs only, no notifications):
+
+```bash
+# Enable
+launchctl load ~/Library/LaunchAgents/com.vk.system-monitor.plist
+
+# View stats
+tail -f logs/system-monitor.log
+```
+
+## How It Works
+
+1. Agent runs every 5 minutes
+2. Connects to next WireGuard VPN config
+3. Finds first video in your videos folder
+4. Creates/uses VK playlist based on video's subfolder
+5. Uploads with parallel chunking for speed
+6. Moves video to Trash
+7. Sends notification with results
+
+## Requirements
+
+- macOS
+- Docker Desktop
+- [terminal-notifier](https://github.com/julienXX/terminal-notifier) (for rich notifications)
+- WireGuard configs (optional, can be disabled)
+
+Install terminal-notifier:
+```bash
+brew install terminal-notifier
+```
+
+## Troubleshooting
+
+**No notifications?**
+- Install `terminal-notifier`: `brew install terminal-notifier`
+
+**Upload fails?**
+- Check `logs/uploader.log` for errors
+- Try disabling VPN: set `SKIP_WIREGUARD=true` in `.env`
+
+**Agent not running?**
+- Check status: `launchctl list | grep vk.uploader`
+- View stderr: `cat logs/*-stderr.log`
+
+## License
+
+MIT

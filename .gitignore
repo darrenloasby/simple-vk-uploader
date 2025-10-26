@@ -1,9 +1,23 @@
-trash
-logs
-wireguard
-.claude
-__pycache__
+# Directories
+trash/
+logs/
+wireguard/
+__pycache__/
+.vscode/
+
+# Environment and config
 .env
-.dockerignore
-.vscode
+
+# macOS
 .DS_Store
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.so
+
+# Logs
+*.log
+*.txt

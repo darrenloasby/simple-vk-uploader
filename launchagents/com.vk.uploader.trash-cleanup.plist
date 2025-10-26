@@ -3,27 +3,30 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.vk.uploader.agent</string>
+    <string>com.vk.uploader.trash-cleanup</string>
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/dlo/Source/simple-vk-uploader/vk-uploader-agent.sh</string>
+        <string>/bin/bash</string>
+        <string>$HOME/Source/simple-vk-uploader/scripts/vk-trash-cleanup.sh</string>
     </array>
 
-    <key>RunAtLoad</key>
-    <true/>
-
-    <key>StartInterval</key>
-    <integer>300</integer>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>2</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/dlo/Source/simple-vk-uploader/logs/agent-stdout.log</string>
+    <string>$HOME/Source/simple-vk-uploader/logs/trash-cleanup-launchagent.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/dlo/Source/simple-vk-uploader/logs/agent-stderr.log</string>
+    <string>$HOME/Source/simple-vk-uploader/logs/trash-cleanup-launchagent.log</string>
 
     <key>WorkingDirectory</key>
-    <string>/Users/dlo/Source/simple-vk-uploader</string>
+    <string>$HOME/Source/simple-vk-uploader</string>
 
     <key>EnvironmentVariables</key>
     <dict>
@@ -35,6 +38,6 @@
     <string>Background</string>
 
     <key>Nice</key>
-    <integer>1</integer>
+    <integer>5</integer>
 </dict>
 </plist>

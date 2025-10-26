@@ -37,7 +37,7 @@ echo ""
 AGENTS=(
   "com.vk.uploader.agent.plist"
   "com.vk.uploader.trash-cleanup.plist"
-  "com.vk.uploader.watch.plist"  # Old watcher
+  "com.vk.system-monitor.plist"
 )
 
 # Uninstall each agent
@@ -86,6 +86,33 @@ if [ "$still_running" = true ]; then
 else
   print_status "$GREEN" "🎉 All VK Uploader LaunchAgents have been uninstalled!"
   notify "Uninstallation Complete" "VK Uploader LaunchAgents removed"
+fi
+
+# Clean up log files
+echo ""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+LOGS_DIR="$PROJECT_ROOT/logs"
+
+if [ -d "$LOGS_DIR" ]; then
+  print_status "$BLUE" "Cleaning up log files..."
+
+  # List log files to be deleted
+  log_count=$(find "$LOGS_DIR" -type f -name "*.log" -o -name "*.txt" 2>/dev/null | wc -l | tr -d ' ')
+
+  if [ "$log_count" -gt 0 ]; then
+    print_status "$YELLOW" "  Found $log_count log file(s) in $LOGS_DIR"
+    find "$LOGS_DIR" -type f \( -name "*.log" -o -name "*.txt" \) -exec rm -f {} \;
+    print_status "$GREEN" "  ✓ Deleted all log files"
+
+    # Remove logs directory if empty
+    if [ -z "$(ls -A "$LOGS_DIR" 2>/dev/null)" ]; then
+      rmdir "$LOGS_DIR"
+      print_status "$GREEN" "  ✓ Removed empty logs directory"
+    fi
+  else
+    print_status "$YELLOW" "  - No log files to clean up"
+  fi
 fi
 
 echo ""

@@ -23,7 +23,6 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from vk_api import VkApi
 from vk_api.exceptions import VkApiError
-from tqdm import tqdm
 
 # Custom rotating log handler that writes to top of file
 class TopRotatingFileHandler(logging.Handler):
@@ -310,13 +309,16 @@ class WireGuardManager:
 class VKUploader:
     """Handle VK video uploads with playlist support"""
 
-    def __init__(self, token: str):
+    def __init__(self, token: str, wg_manager=None, skip_vpn=False):
         self.token = token
         self.vk_session = VkApi(token=token)
         self.traffic_monitor = NetworkTrafficMonitor()
         self.chunk_size = self._determine_chunk_size()
         self.upload_session = self._create_upload_session()
         self._playlists_cache = None  # Cache playlists to avoid repeated API calls
+        self.last_failure_reason = None  # Track last upload failure reason
+        self.wg_manager = wg_manager  # Optional WireGuard manager for VPN rotation
+        self.skip_vpn = skip_vpn  # If True, use max performance (no VPN throttling)
 
     def _determine_chunk_size(self) -> int:
         """Determine upload chunk size (defaults to 5 MB for better throughput)."""
@@ -476,13 +478,27 @@ class VKUploader:
             logger.warning(f"Could not check upload status: {e}")
             return 0
 
-    def _upload_chunk(self, upload_url: str, chunk_data: bytes, start_byte: int,
-                     total_size: int, filename: str, timeout: int) -> tuple[bool, int]:
+    def _read_chunk(self, video_path: Path, start_byte: int, chunk_size: int) -> bytes:
+        """Read a chunk from file at specific offset"""
+        with open(video_path, 'rb') as f:
+            f.seek(start_byte)
+            return f.read(chunk_size)
+
+    def _upload_chunk(self, upload_url: str, video_path: Path, start_byte: int,
+                     chunk_size: int, total_size: int, filename: str, timeout: int,
+                     preloaded_data: bytes = None) -> tuple[bool, int]:
         """
         Upload a single chunk of the file.
+        If preloaded_data is provided, use it; otherwise read from disk on-demand.
         Returns (success, bytes_uploaded)
         """
         try:
+            # Use preloaded data if available, otherwise read on-demand
+            if preloaded_data is not None:
+                chunk_data = preloaded_data
+            else:
+                chunk_data = self._read_chunk(video_path, start_byte, chunk_size)
+
             actual_chunk_size = len(chunk_data)
 
             if actual_chunk_size == 0:
@@ -501,11 +517,12 @@ class VKUploader:
 
             logger.debug(f"Uploading chunk: {start_byte}-{end_byte}/{total_size} ({actual_chunk_size / (1024*1024):.2f} MB)")
 
+            # Use longer connection timeout for VPN reliability (90s connect, variable read)
             response = self.upload_session.post(
                 upload_url,
                 data=chunk_data,
                 headers=headers,
-                timeout=(30, timeout)  # Reduced connection timeout
+                timeout=(90, timeout)
             )
 
             logger.debug(f"Chunk response: status={response.status_code}")
@@ -518,6 +535,13 @@ class VKUploader:
 
             return True, actual_chunk_size
 
+        except requests.exceptions.ConnectTimeout as e:
+            logger.error(f"Connection timeout uploading chunk at byte {start_byte}: {e}")
+            logger.warning("VPN connection may be unstable or CDN server unreachable")
+            return False, 0
+        except requests.exceptions.Timeout as e:
+            logger.error(f"Timeout uploading chunk at byte {start_byte}: {e}")
+            return False, 0
         except Exception as e:
             logger.error(f"Error uploading chunk at byte {start_byte}: {e}")
             return False, 0
@@ -577,65 +601,127 @@ class VKUploader:
                     if start_byte > 0:
                         logger.info(f"Resuming upload from byte {start_byte} ({start_byte / (1024*1024):.2f} MB)")
 
-                # Pre-read entire file into memory for faster chunk access
-                logger.debug("Reading file into memory for faster chunked uploads...")
-                with open(video_path, 'rb') as f:
-                    f.seek(start_byte)
-                    file_data = f.read()
+                # Hybrid memory strategy: preload small files (<1.5GB), stream large files
+                file_size_gb = file_size / (1024 * 1024 * 1024)
+                use_streaming = file_size_gb > 1.5
 
-                # Prepare chunks
                 chunks_to_upload = []
                 bytes_uploaded = start_byte
                 filename = video_path.name
 
-                while bytes_uploaded < file_size:
-                    current_chunk_size = min(self.chunk_size, file_size - bytes_uploaded)
-                    chunk_offset = bytes_uploaded - start_byte
-                    chunk_data = file_data[chunk_offset:chunk_offset + current_chunk_size]
+                if use_streaming:
+                    # Streaming mode for large files: save memory
+                    logger.info(f"Large file ({file_size_gb:.1f} GB) - using streaming mode")
+                    while bytes_uploaded < file_size:
+                        current_chunk_size = min(self.chunk_size, file_size - bytes_uploaded)
+                        chunks_to_upload.append((bytes_uploaded, current_chunk_size, None))
+                        bytes_uploaded += current_chunk_size
+                    logger.info(f"Prepared {len(chunks_to_upload)} chunks for streaming")
+                else:
+                    # Preload mode for small files: faster parallel uploads
+                    logger.info(f"Small file ({file_size_gb:.2f} GB) - preloading for speed")
+                    with open(video_path, 'rb') as f:
+                        f.seek(start_byte)
+                        file_data = f.read()
 
-                    chunks_to_upload.append((bytes_uploaded, chunk_data))
-                    bytes_uploaded += len(chunk_data)
+                    while bytes_uploaded < file_size:
+                        current_chunk_size = min(self.chunk_size, file_size - bytes_uploaded)
+                        chunk_offset = bytes_uploaded - start_byte
+                        chunk_data = file_data[chunk_offset:chunk_offset + current_chunk_size]
+                        chunks_to_upload.append((bytes_uploaded, current_chunk_size, chunk_data))
+                        bytes_uploaded += current_chunk_size
+                    logger.info(f"Prepared {len(chunks_to_upload)} chunks from preloaded file")
 
-                logger.info(f"Prepared {len(chunks_to_upload)} chunks for upload")
+                # Test connectivity before starting upload
+                logger.info("Testing connectivity to upload server...")
+                try:
+                    test_response = self.upload_session.head(upload_url, timeout=15)
+                    logger.info(f"Connectivity test OK (status: {test_response.status_code})")
+                except Exception as e:
+                    logger.warning(f"Connectivity test failed: {e}")
+                    logger.warning("Proceeding anyway, but connection issues may occur")
 
-                # Upload chunks with limited parallelism (3 concurrent chunks)
-                pbar = tqdm(total=file_size, initial=start_byte, unit='B', unit_scale=True, desc="Uploading")
+                # Upload chunks with adaptive parallelism
+                # No VPN: Full speed (3 workers)
+                # With VPN + Large files (>1.5GB): 2 workers for balance
+                # With VPN + Small files (<1.5GB): 3 workers for speed
+                if self.skip_vpn:
+                    max_workers = min(3, len(chunks_to_upload))
+                    logger.info(f"VPN disabled - using {max_workers} parallel workers for maximum speed")
+                elif use_streaming:
+                    max_workers = min(2, len(chunks_to_upload))
+                    logger.info(f"Large file with VPN - using {max_workers} workers for balance of speed and stability")
+                else:
+                    max_workers = min(3, len(chunks_to_upload))
+                    logger.info(f"Small file with VPN - using {max_workers} parallel workers")
+
+                # Track upload progress
                 total_uploaded = start_byte
-                max_workers = min(3, len(chunks_to_upload))  # Max 3 parallel uploads
+                consecutive_timeouts = 0
+                max_consecutive_timeouts = 3  # Abort if 3 chunks timeout in a row
+
+                # Progress tracking for clean logging
+                last_logged_percent = 0
+                progress_log_interval = 10  # Log every 10%
 
                 try:
                     with ThreadPoolExecutor(max_workers=max_workers) as executor:
                         # Submit chunks in order but allow parallel execution
                         future_to_chunk = {}
-                        for chunk_start, chunk_data in chunks_to_upload:
+                        for chunk_start, chunk_size_val, chunk_data in chunks_to_upload:
                             future = executor.submit(
                                 self._upload_chunk,
                                 upload_url,
-                                chunk_data,
+                                video_path,
                                 chunk_start,
+                                chunk_size_val,
                                 file_size,
                                 filename,
-                                chunk_timeout
+                                chunk_timeout,
+                                chunk_data  # Pass preloaded data (or None for streaming)
                             )
-                            future_to_chunk[future] = chunk_start
+                            future_to_chunk[future] = (chunk_start, chunk_size_val)
 
                         # Process results as they complete
                         for future in as_completed(future_to_chunk):
-                            chunk_start = future_to_chunk[future]
+                            chunk_start, chunk_size_val = future_to_chunk[future]
                             try:
                                 success, chunk_bytes = future.result()
                                 if not success:
+                                    consecutive_timeouts += 1
+                                    logger.warning(f"Chunk upload failed ({consecutive_timeouts} consecutive failures)")
+
+                                    if consecutive_timeouts >= max_consecutive_timeouts:
+                                        raise IncompleteUploadError(
+                                            f"Aborting: {consecutive_timeouts} consecutive chunk upload failures detected"
+                                        )
+
                                     raise IncompleteUploadError(
                                         f"Failed to upload chunk at byte {chunk_start}"
                                     )
-                                pbar.update(chunk_bytes)
+                                else:
+                                    # Reset timeout counter on success
+                                    consecutive_timeouts = 0
+
+                                # Update progress and log periodically
+                                total_uploaded += chunk_bytes
+                                current_percent = int((total_uploaded / file_size) * 100)
+
+                                # Log progress every 10%
+                                if current_percent >= last_logged_percent + progress_log_interval:
+                                    uploaded_mb = total_uploaded / (1024 * 1024)
+                                    total_mb = file_size / (1024 * 1024)
+                                    elapsed = time.time() - start_time
+                                    speed_mbps = uploaded_mb / elapsed if elapsed > 0 else 0
+                                    logger.info(f"Progress: {current_percent}% ({uploaded_mb:.0f}/{total_mb:.0f} MB) @ {speed_mbps:.1f} MB/s")
+                                    last_logged_percent = current_percent
+
                             except Exception as e:
+                                consecutive_timeouts += 1
                                 raise IncompleteUploadError(f"Chunk upload failed: {e}")
 
-                    pbar.close()
                     logger.info(f"✓ Upload completed successfully!")
                 except Exception:
-                    pbar.close()
                     raise
 
                 # Log upload statistics
@@ -652,6 +738,7 @@ class VKUploader:
 
             except VkApiError as e:
                 logger.error(f"VK API error: {e}")
+                self.last_failure_reason = f"VK API error: {e}"
                 if attempt < max_retries - 1:
                     wait_time = 5 * (attempt + 1)  # Reduced from 10s
                     logger.info(f"Waiting {wait_time} seconds before retry...")
@@ -660,6 +747,7 @@ class VKUploader:
                 return False
             except requests.Timeout as e:
                 logger.error(f"Upload timeout: {e}")
+                self.last_failure_reason = f"Upload timeout after {max_retries} attempts"
                 if attempt < max_retries - 1:
                     wait_time = 10 * (attempt + 1)  # Reduced from 15s
                     logger.info(f"Waiting {wait_time} seconds before retry...")
@@ -667,15 +755,41 @@ class VKUploader:
                     continue
                 return False
             except IncompleteUploadError as e:
+                error_msg = str(e)
                 logger.error(f"Incomplete upload: {e}")
+                # Detect consecutive timeout pattern
+                if "consecutive chunk upload failures" in error_msg:
+                    self.last_failure_reason = "Persistent upload timeouts - VPN connection unstable or CDN unreachable"
+                    logger.error("DIAGNOSIS: Multiple consecutive timeouts detected")
+                    logger.error("This usually indicates:")
+                    logger.error("  1. WireGuard VPN connection is unstable")
+                    logger.error("  2. Current VPN server cannot reach VK CDN")
+                    logger.error("  3. VPN server is overloaded or rate-limited")
+
+                    # Try rotating WireGuard if available (only if VPN is enabled)
+                    if not self.skip_vpn and self.wg_manager and attempt < max_retries - 1:
+                        logger.info("Attempting to rotate WireGuard configuration...")
+                        next_config = self.wg_manager.get_next_config()
+                        if next_config:
+                            self.wg_manager.disconnect_wireguard()
+                            time.sleep(2)
+                            if self.wg_manager.connect_wireguard(next_config):
+                                logger.info(f"Rotated to new WireGuard config: {next_config}")
+                            else:
+                                logger.warning("Failed to connect to new WireGuard config")
+                        else:
+                            logger.warning("No alternative WireGuard configs available")
+                else:
+                    self.last_failure_reason = f"Incomplete upload: {error_msg}"
                 if attempt < max_retries - 1:
-                    wait_time = 10 * (attempt + 1)  # Reduced from 20s
+                    wait_time = 15 * (attempt + 1)  # Longer wait for connection issues
                     logger.info(f"Waiting {wait_time} seconds before retry...")
                     time.sleep(wait_time)
                     continue
                 return False
             except requests.RequestException as e:
                 logger.error(f"Upload error: {e}")
+                self.last_failure_reason = f"Network error: {e}"
                 if attempt < max_retries - 1:
                     wait_time = 5 * (attempt + 1)  # Reduced from 10s
                     logger.info(f"Waiting {wait_time} seconds before retry...")
@@ -684,6 +798,7 @@ class VKUploader:
                 return False
             except Exception as e:
                 logger.error(f"Unexpected error during upload: {e}")
+                self.last_failure_reason = f"Unexpected error: {e}"
                 if attempt < max_retries - 1:
                     wait_time = 5 * (attempt + 1)  # Reduced from 10s
                     logger.info(f"Waiting {wait_time} seconds before retry...")
@@ -692,6 +807,7 @@ class VKUploader:
                 return False
 
         logger.error(f"All {max_retries} upload attempts failed")
+        self.last_failure_reason = f"All {max_retries} upload attempts failed"
         return False
     
     def move_to_trash(self, video_path: Path):
@@ -722,6 +838,19 @@ class VKUploader:
         except Exception as e:
             logger.error(f"Error moving file to trash: {e}")
 
+def write_failure_status(video_path: Path, reason: str):
+    """Write failure status to a file that can be checked by the agent"""
+    status_file = Path("/app/logs/upload_failure.txt")
+    try:
+        with open(status_file, 'w') as f:
+            f.write(f"FAILED: {video_path.name}\n")
+            f.write(f"REASON: {reason}\n")
+            f.write(f"TIME: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        logger.info(f"Wrote failure status to {status_file}")
+    except Exception as e:
+        logger.warning(f"Could not write failure status: {e}")
+
+
 def main():
     """Main application logic"""
     # Get environment variables
@@ -735,18 +864,25 @@ def main():
     logger.info("Starting VK Video Uploader")
     logger.info(f"Video directory: {video_dir}")
 
+    # Check if WireGuard should be skipped
+    skip_wireguard = os.getenv('SKIP_WIREGUARD', 'false').lower() in ('true', '1', 'yes')
+
     # Initialize components
     wg_manager = WireGuardManager()
-    uploader = VKUploader(vk_token)
+    uploader = VKUploader(vk_token, wg_manager=wg_manager, skip_vpn=skip_wireguard)
 
     try:
-        # Rotate WireGuard configuration
-        next_config = wg_manager.get_next_config()
-        if next_config:
-            if not wg_manager.connect_wireguard(next_config):
-                logger.error("Failed to connect WireGuard, proceeding without VPN")
+        # Rotate WireGuard configuration (unless skipped)
+        if skip_wireguard:
+            logger.warning("WireGuard SKIPPED via SKIP_WIREGUARD env variable")
+            logger.warning("Uploading without VPN - your real IP will be exposed!")
         else:
-            logger.warning("No WireGuard configurations available")
+            next_config = wg_manager.get_next_config()
+            if next_config:
+                if not wg_manager.connect_wireguard(next_config):
+                    logger.error("Failed to connect WireGuard, proceeding without VPN")
+            else:
+                logger.warning("No WireGuard configurations available")
 
         # Find video file
         video_file = uploader.find_video_file(video_dir)
@@ -784,8 +920,14 @@ def main():
         if uploader.upload_video(video_file, playlist_id=playlist_id):
             uploader.move_to_trash(video_file)
             logger.info("Video processing completed successfully")
+            # Remove any previous failure status
+            failure_file = Path("/app/logs/upload_failure.txt")
+            if failure_file.exists():
+                failure_file.unlink()
         else:
-            logger.error("Video upload failed")
+            failure_reason = getattr(uploader, 'last_failure_reason', 'Unknown error')
+            logger.error(f"Video upload failed: {failure_reason}")
+            write_failure_status(video_file, failure_reason)
             sys.exit(1)
 
     except KeyboardInterrupt:
@@ -795,8 +937,9 @@ def main():
         logger.error(f"Unexpected error: {e}")
         sys.exit(1)
     finally:
-        # Cleanup
-        wg_manager.disconnect_wireguard()
+        # Cleanup - only disconnect if we connected
+        if not skip_wireguard:
+            wg_manager.disconnect_wireguard()
         logger.info("Cleanup completed")
 
 if __name__ == "__main__":
