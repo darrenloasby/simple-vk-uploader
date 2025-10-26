@@ -77,4 +77,6 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.variant.name }}
 
       - name: Image digest for ${{ matrix.variant.name }}
-        run: echo ${{ steps.meta.outputs.tags }}
+        run: |
+          echo "Built and pushed ${{ matrix.variant.name }} image with tags:"
+          echo "${{ steps.meta.outputs.tags }}"
